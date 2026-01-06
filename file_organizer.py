@@ -304,8 +304,20 @@ def organize_files(source_dir: Union[str, Path],
             logger.info(f"  • {filename}")
         logger.info("")
     
+    # Calculate summary statistics
+    files_in_clusters = sum(len(cluster) for cluster in clusters)
+    orphaned_files = len(all_files) - files_in_clusters
+    
+    logger.info("="*SEPARATOR_WIDTH)
+    logger.info("SUMMARY")
+    logger.info("="*SEPARATOR_WIDTH)
+    logger.info(f"Total files:              {len(all_files)}")
+    logger.info(f"Groups found:             {len(clusters)}")
+    logger.info(f"Files to organize:        {files_in_clusters}")
+    logger.info(f"Orphaned files:           {orphaned_files}")
+    logger.info("="*SEPARATOR_WIDTH)
+    
     if dry_run:
-        logger.info("="*SEPARATOR_WIDTH)
         logger.info("This was a preview. No files were moved.")
         logger.info("To actually organize the files, run with dry_run=False")
         return True
@@ -401,14 +413,14 @@ def get_user_directory() -> Union[str, None]:
     hint = " (e.g., C:\\\\Downloads or ~\\\\Downloads)"
     
     while True:
-        directory = input(f"Enter the path to your folder (or 'quit' to exit){hint}:\\n> ").strip()
+        directory = input(f"Enter the path to your folder (press Enter to use current directory, or 'quit' to exit){hint}:\\n> ").strip()
         
         if directory.lower() in ['quit', 'q', 'exit']:
             return None
         
         if not directory:
-            logger.warning("Please enter a valid path.")
-            continue
+            directory = os.getcwd()
+            logger.info(f"Using current directory: {directory}")
         
         # Expand user home directory (~)
         directory = os.path.expanduser(directory)
@@ -477,25 +489,40 @@ def main() -> int:
     threshold = get_user_threshold()
     
     # Run preview first
-    logger.info("\n" + "="*SEPARATOR_WIDTH)
-    logger.info("PREVIEW MODE - No files will be moved")
-    logger.info("="*SEPARATOR_WIDTH)
-    
-    success = organize_files(directory, threshold=threshold, dry_run=True)
-    
-    if not success:
-        return 1
-    
-    # Ask if user wants to proceed
-    logger.info("\n" + "="*SEPARATOR_WIDTH)
-    proceed = input("\nDo you want to organize the files now? (yes/no): ").strip().lower()
-    
-    if proceed in ['yes', 'y']:
-        success = organize_files(directory, threshold=threshold, dry_run=False)
-        return 0 if success else 1
-    
-    logger.info("Cancelled.")
-    return 1
+    while True:
+        logger.info("\n" + "="*SEPARATOR_WIDTH)
+        logger.info("PREVIEW MODE - No files will be moved")
+        logger.info("="*SEPARATOR_WIDTH)
+        
+        success = organize_files(directory, threshold=threshold, dry_run=True)
+        
+        if not success:
+            # Ask if user wants to adjust threshold
+            logger.info("\n" + "="*SEPARATOR_WIDTH)
+            response = input("\nNo similar groups found. Would you like to:\n1. Adjust similarity ratio\n2. Cancel\nEnter your choice (1-2): ").strip().lower()
+            
+            if response in ['1']:
+                logger.info(f"Current threshold: {threshold}")
+                threshold = get_user_threshold()
+                continue
+            else:
+                logger.info("Cancelled.")
+                return 1
+        
+        # Ask if user wants to proceed or adjust threshold
+        logger.info("\n" + "="*SEPARATOR_WIDTH)
+        response = input("\nWhat would you like to do?\n1. Organize files now\n2. Adjust similarity ratio\n3. Cancel\nEnter your choice (1-3): ").strip().lower()
+        
+        if response in ['1', 'yes', 'y']:
+            success = organize_files(directory, threshold=threshold, dry_run=False)
+            return 0 if success else 1
+        elif response in ['2']:
+            logger.info(f"Current threshold: {threshold}")
+            threshold = get_user_threshold()
+            continue
+        else:
+            logger.info("Cancelled.")
+            return 1
 
 
 if __name__ == "__main__":
