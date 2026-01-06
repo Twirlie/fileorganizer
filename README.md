@@ -2,6 +2,10 @@
 
 A Python utility that intelligently groups and organizes files with similar names using fuzzy string matching. Perfect for decluttering directories containing files with slightly different naming conventions.
 
+## Note
+
+This project was entirely built by AI, Vibe coded on a whim casually. I was talking with Claude about how to organize a downloads directory and it just spit out some python code and I figured "hey, could put that into a project." So here it is.
+
 ## Features
 
 - **Fuzzy Matching**: Groups files by name similarity rather than exact matches
