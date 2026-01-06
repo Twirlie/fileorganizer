@@ -29,6 +29,81 @@ A Python utility that intelligently groups and organizes files with similar name
 python file_organizer.py
 ```
 
+## Testing
+
+A comprehensive test suite is included to verify all functionality. The suite includes 76 tests covering unit tests, integration tests, and edge cases.
+
+### Setup
+
+Install pytest (one-time setup):
+
+```bash
+pip install pytest
+```
+
+### Running Tests
+
+Run all tests:
+
+```bash
+pytest tests/ -v
+```
+
+Run tests from a specific category:
+
+```bash
+# Unit tests for similarity matching
+pytest tests/test_file_organizer.py::TestSimilarityRatio -v
+
+# Unit tests for file clustering
+pytest tests/test_file_organizer.py::TestClusterFiles -v
+
+# Unit tests for folder name sanitization
+pytest tests/test_file_organizer.py::TestSanitizeFolderName -v
+
+# Integration tests for file organization
+pytest tests/test_file_organizer.py::TestOrganizeFiles -v
+
+# Edge case tests
+pytest tests/test_file_organizer.py::TestEdgeCases -v
+```
+
+Run a specific test:
+
+```bash
+pytest tests/test_file_organizer.py::TestSimilarityRatio::test_identical_strings -v
+```
+
+### Test Coverage
+
+The test suite covers:
+
+- **Similarity Ratio** (8 tests): String comparison logic, case-insensitivity, unicode handling
+- **Clustering** (11 tests): File grouping, threshold validation, edge cases
+- **Representative Naming** (7 tests): Folder name generation from file lists
+- **Sanitization** (12 tests): Invalid character handling, Windows reserved names, path limits
+- **File Exclusion** (6 tests): System file filtering
+- **File Organization** (12 tests): Dry-run mode, actual movement, collision handling, error scenarios
+- **Input Validation** (10 tests): Threshold and directory validation
+- **Edge Cases** (5 tests): Unicode files, long names, multiple extensions
+- **Helper Functions** (5 tests): Test utility validation
+
+### Test Data
+
+Pre-generated sample files are located in `tests/fixtures/sample_files/`:
+
+- **Photos**: `photo_v1.jpg`, `photo_v2.jpg`, `photo_final.jpg`
+- **Documents**: `report_draft.pdf`, `report_final.pdf`, `summary.pdf`
+- **Text files**: `file_test_1.txt`, `file_test_2.txt`, `file_test_3.txt`, `readme_v1/v2/final.txt`
+- **Archives**: `data_backup_2024.zip`, `data_backup_2025.zip`
+- **Isolated**: `isolated_file.doc`
+
+These files are used to test the clustering and organization features with realistic file names.
+
+### Test Configuration
+
+Tests use pytest fixtures and temporary directories to safely validate functionality without affecting your actual files. User input is automatically mocked during integration tests.
+
 ## Usage
 
 ### Interactive Mode
