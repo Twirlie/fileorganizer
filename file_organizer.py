@@ -14,6 +14,7 @@ from typing import List, Tuple, Set, Dict, Union
 import sys
 import logging
 import platform
+import re
 
 # Detect Windows platform
 IS_WINDOWS = sys.platform.startswith('win')
@@ -43,6 +44,13 @@ MIN_THRESHOLD = 0.5
 MAX_THRESHOLD = 0.95
 MIN_CLUSTER_SIZE = 2
 
+# Version pattern to match: v1, ver1, v.1, ver.1, .1, v1.0.0, ver1.0.0, v.1.0.0, .1.0.0, etc.
+# Supports: v1, ver1, v.1, ver.1, .1, v1.0, ver1.0, etc. with optional underscore/whitespace prefix
+VERSION_PATTERN = r'[_\s]?(?:(?:v|ver)\.?\d+|\.\d+)(?:\.\d+)?(?:\.\d+)?'
+# Marker pattern to match: final, draft, beta, alpha, rc (with optional underscore/whitespace prefix)
+# Using word boundaries to avoid matching partial words like "rc" in "archive"
+MARKER_PATTERN = r'[_\s]?(final|draft|beta|alpha|rc)(?=\.|$|[_\s])'
+
 # Windows reserved filenames (case-insensitive)
 WINDOWS_RESERVED_NAMES = {
     'CON', 'PRN', 'AUX', 'NUL',
@@ -56,9 +64,51 @@ EXCLUDED_EXTENSIONS = {'.exe', '.dll', '.sys', '.tmp', '.lnk'}
 SEPARATOR_WIDTH = 60
 MAX_PATH_LENGTH = 255  # Windows MAX_PATH limitation
 
+def normalize_filename(filename: str) -> str:
+    """
+    Normalize a filename by removing version patterns and file extensions.
+    
+    Removes:
+    - Version patterns: v1, ver1, .1, v.1, ver.1, v1.0, ver1.0, v1.0.0, ver1.0.0, etc. (with optional prefix)
+    - Version markers: final, draft, beta, alpha, rc (with optional prefix)
+    - File extensions: .txt, .pdf, etc.
+    
+    Examples:
+        'report_v1.0.0.pdf' -> 'report'
+        'readme_ver2.3.1.txt' -> 'readme'
+        'photo_v.1.0.0.jpg' -> 'photo'
+        'document_.1.2.0.pdf' -> 'document'
+        'photo_final.jpg' -> 'photo'
+        'readme_v1.txt' -> 'readme'
+    
+    Args:
+        filename: The filename to normalize
+        
+    Returns:
+        Normalized filename without version patterns, markers, or extensions
+    """
+    if not filename:
+        return ""
+    
+    # Remove file extension
+    normalized = os.path.splitext(filename)[0]
+    
+    # Remove version patterns (e.g., v1.0.0, _v1.0.0, " v1.0.0")
+    normalized = re.sub(VERSION_PATTERN, '', normalized, flags=re.IGNORECASE)
+    
+    # Remove version markers (e.g., final, draft, beta, alpha, rc)
+    normalized = re.sub(MARKER_PATTERN, '', normalized, flags=re.IGNORECASE)
+    
+    # Clean up any trailing underscores or spaces left after removal
+    normalized = normalized.rstrip('_ ')
+    
+    return normalized
+
 def similarity_ratio(str1: str, str2: str) -> float:
     """
     Calculate similarity ratio between two strings.
+    
+    Uses normalized strings (without version patterns or extensions) for comparison.
     
     Args:
         str1: First string to compare
@@ -67,20 +117,25 @@ def similarity_ratio(str1: str, str2: str) -> float:
     Returns:
         Similarity ratio between 0.0 and 1.0 (1.0 being identical)
     """
-    return SequenceMatcher(None, str1.lower(), str2.lower()).ratio()
+    # Normalize both filenames before comparison
+    normalized_str1 = normalize_filename(str1)
+    normalized_str2 = normalize_filename(str2)
+    
+    return SequenceMatcher(None, normalized_str1.lower(), normalized_str2.lower()).ratio()
 
 def get_representative_name(filenames: List[str]) -> str:
     """
     Get the most representative base name from a group of filenames.
     
-    Uses the name with highest average similarity to other names as representative.
-    This acts as a centroid for the group.
+    Prefers the cleanest name (without version patterns or markers).
+    If multiple files have equally clean names, uses the one with highest average
+    similarity to other names as representative (centroid approach).
     
     Args:
         filenames: List of filenames to analyze
         
     Returns:
-        The most representative base name without extension
+        The most representative base name without extension, version patterns, or markers
         
     Raises:
         ValueError: If the filenames list is empty
@@ -88,22 +143,22 @@ def get_representative_name(filenames: List[str]) -> str:
     if not filenames:
         raise ValueError("Filenames list cannot be empty")
     
-    # Remove extensions and find the shortest common substring
-    base_names = [os.path.splitext(f)[0] for f in filenames]
+    # Remove extensions and normalize to get clean base names
+    normalized_names = [normalize_filename(f) for f in filenames]
     
-    # Find the name with most similarity to others (centroid)
+    # Find the name with most similarity to others (centroid) among normalized names
     best_name = ""
     best_score = 0.0
     
-    for name in base_names:
-        score = sum(similarity_ratio(name, other) for other in base_names)
+    for name in normalized_names:
+        score = sum(similarity_ratio(name, other) for other in normalized_names)
         if score > best_score:
             best_score = score
             best_name = name
     
     # Clean up the name for folder use
     if not best_name:
-        best_name = base_names[0] if base_names else "Files"
+        best_name = normalized_names[0] if normalized_names else "Files"
     
     return best_name.strip()
 

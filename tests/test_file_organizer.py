@@ -25,8 +25,122 @@ from file_organizer import (
     should_exclude_file,
     organize_files,
     get_user_directory,
-    get_user_threshold
+    get_user_threshold,
+    normalize_filename
 )
+
+
+# ============================================================================
+# UNIT TESTS - normalize_filename
+# ============================================================================
+
+class TestNormalizeFilename:
+    """Test the normalize_filename function."""
+    
+    def test_removes_semantic_version_with_underscore(self):
+        """Should remove semantic versions with underscore prefix (all formats)."""
+        assert normalize_filename("report_v1.pdf") == "report"
+        assert normalize_filename("report_v1.0.pdf") == "report"
+        assert normalize_filename("report_v1.0.0.pdf") == "report"
+        assert normalize_filename("readme_v2.3.1.txt") == "readme"
+        # Also test ver format
+        assert normalize_filename("report_ver1.pdf") == "report"
+        assert normalize_filename("report_ver1.0.0.pdf") == "report"
+        assert normalize_filename("readme_ver2.3.1.txt") == "readme"
+        # Also test dot-prepended format
+        assert normalize_filename("report_v.1.pdf") == "report"
+        assert normalize_filename("report_v.1.0.0.pdf") == "report"
+        assert normalize_filename("readme_.1.2.3.txt") == "readme"
+    
+    def test_removes_semantic_version_without_prefix(self):
+        """Should remove semantic versions without prefix."""
+        assert normalize_filename("reportv1.pdf") == "report"
+        assert normalize_filename("reportv1.0.pdf") == "report"
+        assert normalize_filename("reportv1.0.0.pdf") == "report"
+        assert normalize_filename("readmev2.3.1.txt") == "readme"
+        # Also test ver format
+        assert normalize_filename("reportver1.pdf") == "report"
+        assert normalize_filename("reportver1.0.0.pdf") == "report"
+        assert normalize_filename("readmever2.3.1.txt") == "readme"
+        # Also test dot-prepended format
+        assert normalize_filename("reportv.1.pdf") == "report"
+        assert normalize_filename("reportv.1.0.0.pdf") == "report"
+        assert normalize_filename("readme.1.2.3.txt") == "readme"
+    
+    def test_removes_semantic_version_with_whitespace(self):
+        """Should remove semantic versions with whitespace prefix."""
+        assert normalize_filename("report v1.pdf") == "report"
+        assert normalize_filename("report v1.0.pdf") == "report"
+        assert normalize_filename("readme v2.3.1.txt") == "readme"
+        # Also test ver format
+        assert normalize_filename("report ver1.pdf") == "report"
+        assert normalize_filename("report ver1.0.0.pdf") == "report"
+        assert normalize_filename("readme ver2.3.1.txt") == "readme"
+        # Also test dot-prepended format
+        assert normalize_filename("report v.1.pdf") == "report"
+        assert normalize_filename("report v.1.0.0.pdf") == "report"
+        assert normalize_filename("readme .1.2.3.txt") == "readme"
+    
+    def test_removes_version_markers(self):
+        """Should remove version markers (final, draft, beta, alpha, rc)."""
+        assert normalize_filename("document_final.pdf") == "document"
+        assert normalize_filename("document_draft.pdf") == "document"
+        assert normalize_filename("software_beta.exe") == "software"
+        assert normalize_filename("app_alpha.zip") == "app"
+        assert normalize_filename("release_rc.tar") == "release"
+    
+    def test_removes_version_markers_with_whitespace(self):
+        """Should remove version markers with whitespace prefix."""
+        assert normalize_filename("document final.pdf") == "document"
+        assert normalize_filename("document draft.pdf") == "document"
+    
+    def test_removes_file_extensions(self):
+        """Should remove file extensions."""
+        assert normalize_filename("photo.jpg") == "photo"
+        assert normalize_filename("document.pdf") == "document"
+        # Note: splitext only removes last extension, so archive.tar.gz -> archive.tar
+        assert normalize_filename("archive.tar.gz") == "archive.tar"
+    
+    def test_combined_version_and_extension(self):
+        """Should handle combined version patterns and extensions."""
+        assert normalize_filename("report_v1.0.0.pdf") == "report"
+        assert normalize_filename("document v2.1.0 final.docx") == "document"
+        assert normalize_filename("readme_v1.2.3_draft.txt") == "readme"
+    
+    def test_case_insensitive_markers(self):
+        """Should handle markers in any case."""
+        assert normalize_filename("document_FINAL.pdf") == "document"
+        assert normalize_filename("document_Draft.pdf") == "document"
+        assert normalize_filename("software_BETA.exe") == "software"
+    
+    def test_handles_multiple_version_patterns(self):
+        """Should handle multiple version patterns in one filename."""
+        assert normalize_filename("photo_v1.0.0_final_v2.1.0.jpg") == "photo"
+    
+    def test_empty_string(self):
+        """Empty string should return empty string."""
+        assert normalize_filename("") == ""
+    
+    def test_only_extension(self):
+        """File with only extension should return the extension (no base name)."""
+        # os.path.splitext(".pdf") returns (".pdf", "") so we get ".pdf"
+        assert normalize_filename(".pdf") == ".pdf"
+    
+    def test_unicode_filenames(self):
+        """Should preserve unicode characters."""
+        assert normalize_filename("写真_v1.0.0.jpg") == "写真"
+        assert normalize_filename("文書_final.pdf") == "文書"
+    
+    def test_trailing_underscores_removed(self):
+        """Trailing underscores and spaces should be removed."""
+        assert normalize_filename("photo_v1.0.0.jpg") == "photo"
+        assert normalize_filename("document_final.pdf") == "document"
+    
+    def test_preserves_normal_names(self):
+        """Normal names without versions should be preserved (minus extension)."""
+        assert normalize_filename("photo.jpg") == "photo"
+        assert normalize_filename("document.pdf") == "document"
+        assert normalize_filename("readme.txt") == "readme"
 
 
 # ============================================================================
@@ -47,7 +161,8 @@ class TestSimilarityRatio:
     
     def test_partial_similarity(self):
         """Partial matches should return values between 0 and 1."""
-        ratio = similarity_ratio("photo_v1", "photo_v2")
+        # Use names that have some similarity but aren't versions
+        ratio = similarity_ratio("photo_backup", "photo_archive")
         assert 0 < ratio < 1
         assert ratio > 0.5  # Should be reasonably similar
     
@@ -73,6 +188,33 @@ class TestSimilarityRatio:
         """Unicode characters should be handled correctly."""
         ratio = similarity_ratio("写真_v1", "写真_v2")
         assert ratio > 0.5
+    
+    def test_ignores_version_numbers_in_similarity(self):
+        """Version numbers should be ignored when calculating similarity."""
+        # Files with different versions should match perfectly (after normalization)
+        ratio = similarity_ratio("readme_v1.0.0.txt", "readme_v2.0.0.txt")
+        assert ratio == 1.0
+    
+    def test_ignores_version_markers_in_similarity(self):
+        """Version markers should be ignored when calculating similarity."""
+        ratio = similarity_ratio("document_final.pdf", "document_draft.pdf")
+        assert ratio == 1.0
+    
+    def test_ignores_extensions_in_similarity(self):
+        """File extensions should not affect similarity."""
+        ratio = similarity_ratio("report.pdf", "report.txt")
+        assert ratio == 1.0
+    
+    def test_ignores_all_version_patterns_combined(self):
+        """Should ignore version numbers, markers, and extensions together."""
+        ratio1 = similarity_ratio("photo_v1.0.0_final.jpg", "photo_v2.1.0_draft.png")
+        assert ratio1 == 1.0
+    
+    def test_different_base_names_still_differ(self):
+        """Different base names should still have low similarity even with versions."""
+        ratio = similarity_ratio("report_v1.0.0.pdf", "photo_v1.0.0.pdf")
+        # "report" vs "photo" - normalized to just base names, should be low similarity
+        assert ratio < 0.6
 
 
 # ============================================================================
@@ -153,6 +295,41 @@ class TestClusterFiles:
         clusters_loose = cluster_files(files, threshold=0.5)
         # Loose threshold should result in same or more clusters
         assert len(clusters_loose) >= len(clusters_strict)
+    
+    def test_semantic_version_clustering_underscore(self):
+        """Files with semantic versions and underscore prefix should cluster."""
+        files = ["readme_v1.0.0.txt", "readme_v2.0.0.txt", "readme_v3.1.0.txt"]
+        clusters = cluster_files(files, threshold=0.7)
+        assert len(clusters) == 1
+        assert len(clusters[0]) == 3
+    
+    def test_semantic_version_clustering_no_prefix(self):
+        """Files with semantic versions and no prefix should cluster."""
+        files = ["readmev1.0.0.txt", "readmev2.0.0.txt", "readmev3.1.0.txt"]
+        clusters = cluster_files(files, threshold=0.7)
+        assert len(clusters) == 1
+        assert len(clusters[0]) == 3
+    
+    def test_semantic_version_clustering_whitespace(self):
+        """Files with semantic versions and whitespace prefix should cluster."""
+        files = ["readme v1.0.0.txt", "readme v2.0.0.txt", "readme v3.1.0.txt"]
+        clusters = cluster_files(files, threshold=0.7)
+        assert len(clusters) == 1
+        assert len(clusters[0]) == 3
+    
+    def test_mixed_version_formats_clustering(self):
+        """Files with mixed version formats should cluster together."""
+        files = ["report_v1.0.0.pdf", "report v2.1.0.pdf", "reportv3.0.0.pdf"]
+        clusters = cluster_files(files, threshold=0.7)
+        assert len(clusters) == 1
+        assert len(clusters[0]) == 3
+    
+    def test_version_markers_with_extensions(self):
+        """Files with version markers and different extensions should cluster."""
+        files = ["readme_final.txt", "readme_draft.doc", "readme_beta.pdf"]
+        clusters = cluster_files(files, threshold=0.7)
+        assert len(clusters) == 1
+        assert len(clusters[0]) == 3
 
 
 # ============================================================================
@@ -163,9 +340,9 @@ class TestGetRepresentativeName:
     """Test the get_representative_name function."""
     
     def test_single_filename(self):
-        """Single filename should return its base name."""
+        """Single filename should return its base name without versions."""
         result = get_representative_name(["photo_v1.jpg"])
-        assert result == "photo_v1"
+        assert result == "photo"
     
     def test_identical_basenames(self):
         """Identical basenames should return that name."""
@@ -197,6 +374,30 @@ class TestGetRepresentativeName:
         result = get_representative_name(["abc.txt", "xyz.doc", "pqr.pdf"])
         assert isinstance(result, str)
         assert len(result) > 0
+    
+    def test_prefers_cleanest_name_no_version(self):
+        """Should prefer the cleanest name without version patterns."""
+        result = get_representative_name(["readme_v1.0.0.txt", "readme_v2.1.0.txt", "readme.txt"])
+        assert result == "readme"
+    
+    def test_removes_version_patterns_from_representative(self):
+        """Representative name should not contain version patterns."""
+        result = get_representative_name(["report_v1.0.0.pdf", "report_v2.0.0.pdf"])
+        assert "v1" not in result
+        assert "v2" not in result
+        assert result == "report"
+    
+    def test_removes_version_markers_from_representative(self):
+        """Representative name should not contain version markers."""
+        result = get_representative_name(["document_final.pdf", "document_draft.pdf"])
+        assert "final" not in result.lower()
+        assert "draft" not in result.lower()
+        assert result == "document"
+    
+    def test_semantic_version_handling(self):
+        """Should handle semantic version formats correctly."""
+        result = get_representative_name(["software_v1.0.0.exe", "software_v2.3.1.exe"])
+        assert result == "software"
 
 
 # ============================================================================
